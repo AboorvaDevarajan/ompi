@@ -387,7 +387,9 @@ static void ompi_comm_construct(ompi_communicator_t* comm)
 #ifdef OMPI_WANT_PERUSE
     comm->c_peruse_handles = NULL;
 #endif
-    OBJ_CONSTRUCT(&comm->c_lock, opal_mutex_t);
+    if (opal_using_threads ()) {
+    	OBJ_CONSTRUCT(&comm->c_lock, opal_mutex_t);
+    }
 }
 
 static void ompi_comm_destruct(ompi_communicator_t* comm)
@@ -465,8 +467,9 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
         opal_pointer_array_set_item ( &ompi_comm_f_to_c_table,
                                       comm->c_f_to_c_index, NULL);
     }
-
-    OBJ_DESTRUCT(&comm->c_lock);
+    if (opal_using_threads ()) { 
+	OBJ_DESTRUCT(&comm->c_lock);
+    }
 }
 
 #define OMPI_COMM_SET_INFO_FN(name, flag)       \
