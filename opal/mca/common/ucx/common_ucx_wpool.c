@@ -840,7 +840,6 @@ static void _common_ucx_tls_cleanup(_tlocal_table_t *tls)
     size = tls->ctx_tbl_size;
     for (i = 0; i < size; i++) {
         if (NULL != tls->ctx_tbl[i]->gctx){
-            assert(tls->ctx_tbl[i]->refcnt == 0);
             _tlocal_ctx_record_cleanup(tls->ctx_tbl[i]);
         }
         free(tls->ctx_tbl[i]);
@@ -910,11 +909,6 @@ _tlocal_ctx_record_cleanup(_tlocal_ctx_t *ctx_rec)
     if (NULL == ctx_rec->gctx) {
         return OPAL_SUCCESS;
     }
-
-    if (ctx_rec->refcnt > 0) {
-        return OPAL_SUCCESS;
-    }
-
     /* Remove myself from the communication context structure
      * This may result in context release as we are using
      * delayed cleanup */
@@ -940,7 +934,7 @@ _tlocal_add_ctx(_tlocal_table_t *tls, opal_common_ucx_ctx_t *ctx)
     /* Try to find available record in the TLS table
      * In parallel perform deferred cleanups */
     for (i=0; i<tls->ctx_tbl_size; i++) {
-        if (NULL != tls->ctx_tbl[i]->gctx && tls->ctx_tbl[i]->refcnt == 0) {
+        if (NULL != tls->ctx_tbl[i]->gctx) {
             if (tls->ctx_tbl[i]->gctx->released ) {
                 /* Found dirty record, need to clean first */
                 _tlocal_ctx_record_cleanup(tls->ctx_tbl[i]);
@@ -1065,10 +1059,6 @@ _tlocal_mem_record_cleanup(_tlocal_mem_t *mem_rec)
         free(mem_rec->mem_tls_ptr);
     }
 
-    assert(mem_rec->ctx_rec != NULL);
-    OPAL_ATOMIC_ADD_FETCH32(&mem_rec->ctx_rec->refcnt, -1);
-    assert(mem_rec->ctx_rec->refcnt >= 0);
-
     free(mem_rec->mem);
 
     memset(mem_rec, 0, sizeof(*mem_rec));
@@ -1116,9 +1106,6 @@ static _tlocal_mem_t *_tlocal_add_mem(_tlocal_table_t *tls,
     }
     WPOOL_DBG_OUT("tls = %p, ctx = %p\n",
                   (void *)tls, (void*)mem->ctx);
-
-    tls->mem_tbl[free_idx]->ctx_rec = ctx_rec;
-    OPAL_ATOMIC_ADD_FETCH32(&ctx_rec->refcnt, 1);
 
     tls->mem_tbl[free_idx]->mem->worker = ctx_rec->winfo;
     tls->mem_tbl[free_idx]->mem->rkeys = calloc(mem->ctx->comm_size,
